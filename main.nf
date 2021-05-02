@@ -53,7 +53,7 @@ params.ontreads = false
 params.multiqc_config = "$baseDir/multiqc_config.yml" //custom config mainly for sample names
 params.title = "Summarized nxf-fastqc report"
 params.help = ""
-params.dsrc-decompress = false
+params.dsrcDecompress = false
 
 mqc_config = file(params.multiqc_config) // this is needed, otherwise the multiqc config file is not available in the docker image
 
@@ -137,7 +137,7 @@ process fastp {
 
     input:
         tuple sample_id, file(x) from read_pairs_ch
-        dsrc from params.dsrc-decompress
+        dsrc from params.dsrcDecompress
 
     output:
         file("${sample_id}_fastp.json") into fastp_ch
