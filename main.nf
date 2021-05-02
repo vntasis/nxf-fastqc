@@ -109,7 +109,7 @@ reads = readsdir_repaired + params.fqpattern
 
 // get counts of found fastq files
 readcounts = file(reads)
-println " Reads found:            ${readcounts.size()}
+println " Reads found:            ${readcounts.size()}"
 
 // channel for read pairs --> fastp
 Channel
