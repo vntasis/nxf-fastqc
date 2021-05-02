@@ -134,7 +134,7 @@ process fastp {
 
     tag "fastp on $sample_id"
     //echo true
-    publishDir params.outdir, mode: 'copy', pattern: 'fastp_trimmed/*' // publish only trimmed fastq files
+    publishDir params.outdir, pattern: 'fastp_trimmed/*' // publish only trimmed fastq files
 
     input:
         tuple sample_id, file(x) from read_pairs_ch
@@ -233,7 +233,7 @@ process summary {
 
 //=========================
 process multiqc {
-    publishDir params.outdir, mode: 'copy'
+    publishDir params.outdir
     when:
         !params.ontreads // multiqc fails on fastp json from ont files! too big
 
@@ -280,7 +280,7 @@ Channel.fromPath("${baseDir}/bin/fastq-stats-report-ont.Rmd").set{ fastq_stats_r
 
 if (!params.ontreads) {
     process fastq_stats_ilmn {
-    publishDir params.outdir, mode: 'copy'
+    publishDir params.outdir
 
     input:
         file x from reads_ch.collect()
@@ -298,7 +298,7 @@ if (!params.ontreads) {
     }
 } else {
     process fastq_stats_ont {
-    publishDir params.outdir, mode: 'copy'
+    publishDir params.outdir
 
     input:
         file x from reads_ch.collect()
