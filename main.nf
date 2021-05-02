@@ -138,7 +138,7 @@ process fastp {
 
     input:
         tuple sample_id, file(x) from read_pairs_ch
-        dsrc from params.dsrcDecompress
+        val dsrc from params.dsrcDecompress
 
     output:
         file("${sample_id}_fastp.json") into fastp_ch
