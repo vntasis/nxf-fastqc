@@ -8,12 +8,6 @@ if( !nextflow.version.matches('>=19.08') ) {
     exit 1
 }
 
-/*
-* ANSI escape codes to color output messages, get date to use in results folder name
-*/
-ANSI_GREEN = "\033[1;32m"
-ANSI_RED = "\033[1;31m"
-ANSI_RESET = "\033[0m"
 
 // date needed to prefix results dir
 DATE = new java.util.Date()
@@ -77,10 +71,10 @@ log.info """
 
          Runtime data:
         -------------------------------------------
-         Running with profile:   ${ANSI_GREEN}${workflow.profile}${ANSI_RESET}
-         Running as user:        ${ANSI_GREEN}${workflow.userName}${ANSI_RESET}
-         Launch dir:             ${ANSI_GREEN}${workflow.launchDir}${ANSI_RESET}
-         Base dir:               ${ANSI_GREEN}${baseDir}${ANSI_RESET}
+         Running with profile:   ${workflow.profile}
+         Running as user:        ${workflow.userName}
+         Launch dir:             ${workflow.launchDir}
+         Base dir:               ${baseDir}
          """
          .stripIndent()
 
@@ -115,7 +109,7 @@ reads = readsdir_repaired + params.fqpattern
 
 // get counts of found fastq files
 readcounts = file(reads)
-println " Reads found:            ${ANSI_GREEN}${readcounts.size()}${ANSI_RESET}"
+println " Reads found:            ${readcounts.size()}
 
 // channel for read pairs --> fastp
 Channel
@@ -320,15 +314,15 @@ workflow.onComplete {
     if (workflow.success) {
         log.info """
             ===========================================
-            ${ANSI_GREEN}Finished in ${workflow.duration}
+            Finished in ${workflow.duration}
             Processed ${ readcounts.size() } fastq files
-            See the report here ==> ${ANSI_RESET}$params.outdir/multiqc_report.html
+            See the report here ==> $params.outdir/multiqc_report.html
             """
             .stripIndent()
     } else {
         log.info """
             ===========================================
-            ${ANSI_RED}Finished with errors!${ANSI_RESET}
+            Finished with errors!
             """
             .stripIndent()
     }
