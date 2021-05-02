@@ -148,12 +148,16 @@ process fastp {
         seqmode = "PE"
         """
         function finish {
-          rm read1.fastq read2.fastq
+          $dsrc && rm read1.fastq read2.fastq || exit 0
         }
 
-        $dsrc && \
-          { dsrc d -t ${task.cpus} ${x[0]} read1.fastq && dsrc d -t ${task.cpus} ${x[1]} read2.fastq; read1='read1.fastq' && read2='read2.fastq'} || \
-          { read1=${x[0]} && read2=${x[1]} }
+        if $dsrc
+        then
+          dsrc d -t ${task.cpus} ${x[0]} read1.fastq && dsrc d -t ${task.cpus} ${x[1]} read2.fastq
+          read1='read1.fastq' && read2='read2.fastq'
+        else
+          read1=${x[0]} && read2=${x[1]}
+        fi
 
         mkdir fastp_trimmed
         fastp \
@@ -162,19 +166,22 @@ process fastp {
         -o fastp_trimmed/trim_${x[0]} -O fastp_trimmed/trim_${x[1]} \
         -j ${sample_id}_fastp.json --thread ${task.cpus}
 
-        $dsrc && trap finish EXIT
+        trap finish EXIT
         """
     }
     else {
         seqmode = "SE"
         """
         function finish {
-          rm reads.fastq
+          $dsrc && rm reads.fastq || exit 0
         }
 
-        $dsrc && \
-          { dsrc d -t ${task.cpus} ${x} reads.fastq && reads='reads.fastq' } || \
-          { reads=${x} }
+        if $dsrc
+        then
+          dsrc d -t ${task.cpus} ${x} reads.fastq && reads='reads.fastq'
+        else
+          reads=${x}
+        fi
 
         mkdir fastp_trimmed
         fastp \
@@ -182,7 +189,7 @@ process fastp {
         -i \$reads -o fastp_trimmed/trim_${x} \
         -j ${sample_id}_fastp.json --thread ${task.cpus}
 
-        $dsrc && trap finish EXIT
+        trap finish EXIT
         """
     }
 
