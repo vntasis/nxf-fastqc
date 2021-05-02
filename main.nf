@@ -33,7 +33,7 @@ LC_NUMERIC=en_GB.UTF-8 printf "%'.0f\n" 1.345e+12
 
 or in ksh (only separately, not as part of a pipe or with xargs)
 printf '%#d\n' 105000000
-gives 
+gives
 105M directly! works for G, T, P ...why not in bash?
 
 even this works!!!
@@ -42,8 +42,8 @@ printf "%#d" 12e+12
 so no need for java classes
 */
 
-/* 
- * pipeline input parameters 
+/*
+ * pipeline input parameters
  */
 params.readsdir = "fastq"
 params.outdir = "${workflow.launchDir}/results-fastqc"
@@ -53,6 +53,7 @@ params.ontreads = false
 params.multiqc_config = "$baseDir/multiqc_config.yml" //custom config mainly for sample names
 params.title = "Summarized nxf-fastqc report"
 params.help = ""
+params.dsrc-decompress = false
 
 mqc_config = file(params.multiqc_config) // this is needed, otherwise the multiqc config file is not available in the docker image
 
@@ -63,7 +64,7 @@ if (params.help) {
 
 log.info """
         ===========================================
-         F A S T Q C  P I P E L I N E    
+         F A S T Q C  P I P E L I N E
 
          Used parameters:
         -------------------------------------------
@@ -87,7 +88,7 @@ def helpMessage() {
 log.info """
         ===========================================
          F A S T Q C   P I P E L I N E
-  
+
          Usage:
         -------------------------------------------
          --readsdir         : directory with fastq files, default is "fastq"
@@ -105,7 +106,7 @@ log.info """
 
 
 //just in case trailing slash in readsdir not provided...
-readsdir_repaired = "${params.readsdir}".replaceFirst(/$/, "/") 
+readsdir_repaired = "${params.readsdir}".replaceFirst(/$/, "/")
 //println(readsdir_repaired)
 
 // build search pattern for fastq files in input dir
@@ -116,7 +117,7 @@ readcounts = file(reads)
 println " Reads found:            ${ANSI_GREEN}${readcounts.size()}${ANSI_RESET}"
 
 // channel for read pairs --> fastp
-Channel 
+Channel
     .fromFilePairs( reads, checkIfExists: true, size: -1 ) // default is 2, so set to -1 to allow any number of files
     .ifEmpty { error "Can not find any reads matching ${reads}" }
     .set{ read_pairs_ch }
@@ -136,7 +137,8 @@ process fastp {
 
     input:
         tuple sample_id, file(x) from read_pairs_ch
-    
+        dsrc from params.dsrc-decompress
+
     output:
         file("${sample_id}_fastp.json") into fastp_ch
         file('fastp_trimmed/trim_*')
@@ -150,27 +152,47 @@ process fastp {
     if ( !single ) {
         seqmode = "PE"
         """
+        function finish {
+          rm read1.fastq read2.fastq
+        }
+
+        $dsrc && \
+          { dsrc d -t ${task.cpus} ${x[0]} read1.fastq && dsrc d -t ${task.cpus} ${x[1]} read2.fastq; read1='read1.fastq' && read2='read2.fastq'} || \
+          { read1=${x[0]} && read2=${x[1]} }
+
         mkdir fastp_trimmed
         fastp \
         -q $qscore_cutoff \
-        -i ${x[0]} -I ${x[1]} \
+        -i \$read1 -I \$read2 \
         -o fastp_trimmed/trim_${x[0]} -O fastp_trimmed/trim_${x[1]} \
-        -j ${sample_id}_fastp.json
+        -j ${sample_id}_fastp.json --thread ${task.cpus}
+
+        $dsrc && trap finish EXIT
         """
-    } 
+    }
     else {
         seqmode = "SE"
         """
+        function finish {
+          rm reads.fastq
+        }
+
+        $dsrc && \
+          { dsrc d -t ${task.cpus} ${x} reads.fastq && reads='reads.fastq' } || \
+          { reads=${x} }
+
         mkdir fastp_trimmed
         fastp \
         -q $qscore_cutoff \
-        -i ${x} -o fastp_trimmed/trim_${x} \
-        -j ${sample_id}_fastp.json
+        -i \$reads -o fastp_trimmed/trim_${x} \
+        -j ${sample_id}_fastp.json --thread ${task.cpus}
+
+        $dsrc && trap finish EXIT
         """
     }
 
 }
- 
+
 //=========================
 
 /*
@@ -192,18 +214,18 @@ process summary {
     script:
     """
     #!/usr/bin/env ksh
-    
+
     # check if jq installed, relevant only in local envs
     command -v jq >/dev/null 2>&1 || \
     { echo >&2 "jq required but not installed, install it or use -profile docker or conda. Aborting."; exit 1;}
-    
+
     # prefer to keep the tmp files in the scratch for reference
 
     jq '.summary.before_filtering.total_reads' $x | awk '{sum+=\$0} END{print sum}' > treads-before.tmp
     jq '.summary.after_filtering.total_reads' $x | awk '{sum+=\$0} END{print sum}' > treads-after.tmp
     jq '.summary.before_filtering.total_bases' $x | awk '{sum+=\$0} END{print sum}' > tbases-before.tmp
     jq '.summary.after_filtering.total_bases' $x | awk '{sum+=\$0} END{print sum}' > tbases-after.tmp
-    
+
     cat treads-before.tmp treads-after.tmp tbases-before.tmp tbases-after.tmp | xargs siformat.sh
     """
 }
@@ -213,7 +235,7 @@ process multiqc {
     publishDir params.outdir, mode: 'copy'
     when:
         !params.ontreads // multiqc fails on fastp json from ont files! too big
-       
+
     input:
         file x from fastp_ch.collect()
         file mqc_config
@@ -225,7 +247,7 @@ process multiqc {
         file('multiqc_report_data/multiqc_general_stats.txt')
 
     // when using --title, make sure that the --filename is explicit, otherwise
-    // multiqc uses the title string as output filename 
+    // multiqc uses the title string as output filename
     script:
     // currently y is of length 1, the split gets the values in a list (see string split() method in groovy)
     def splitstring = y.split()
@@ -235,21 +257,21 @@ process multiqc {
     --title "${params.title}" \
     --filename "multiqc_report.html" \
     --config $mqc_config \
-    --cl_config "section_comments: 
+    --cl_config "section_comments:
                     { fastp: '*This is ${ seqmode } data *<br>
                               Total reads before filter: ** ${ splitstring[0] } ** <br>
                               Total reads    after filter: ** ${ splitstring[1] } ** <br>
                               Total bases before filter: ** ${ splitstring[2] } ** <br>
                               Total bases    after filter: ** ${ splitstring[3] } ** <br> <br>
-                              See also the report: 
-                              <a href="fastq-stats-report.html" target="_blank">fastq-stats-report.html</a>, 
+                              See also the report:
+                              <a href="fastq-stats-report.html" target="_blank">fastq-stats-report.html</a>,
                               which contains per-read data about Phred-score and k-mer distribution, N50 etc. <br>
                               The raw data from both reports (as *.csv files) can be found in the results folder.'
                     }
                 " \
     ${x}
     """
-} 
+}
 
 //=============================
 Channel.fromPath("${baseDir}/bin/fastq-stats-report.Rmd").set{ fastq_stats_report_ch }
@@ -267,7 +289,7 @@ if (!params.ontreads) {
         file 'fastq-stats-report.html'
         file "fastq-stats.csv"
         file "fastq-stats.xlsx"
-    
+
     script:
     """
     seqtools.R $x
@@ -285,13 +307,13 @@ if (!params.ontreads) {
         file 'fastq-stats-report-ont.html'
         file "fastq-stats.csv"
         file "fastq-stats.xlsx"
-    
+
     script:
     """
     seqtools-ont.R $x
     """
     }
-}   
+}
 //=============================
 workflow.onComplete {
     if (workflow.success) {
