@@ -94,6 +94,7 @@ log.info """
          --readsdir         : directory with fastq files, default is "fastq"
          --fqpattern        : regex pattern to match fastq files, default is "*R{1,2}*.fastq.gz"
          --outdir           : where results will be saved, default is "results-fastp"
+         --dsrcDecompress   : decompress input files with DSRC DNA Sequence Reads Compressor
          --ontreads         : use this parameter for Nanopore reads
          --multiqc_config   : path to config file for MultiQC, default is "multiqc_config.yml"
          --title            : MultiQC report title, default is "Summarized fastp report"
