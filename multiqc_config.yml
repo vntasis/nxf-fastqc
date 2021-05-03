@@ -2,5 +2,6 @@ fn_clean_exts:
     - '.gz'
     - '.fastq'
     - '_L001'
+    - '.fastq.dsrc'
 
 intro_text: False

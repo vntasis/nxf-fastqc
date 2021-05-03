@@ -43,7 +43,6 @@ params.readsdir = "fastq"
 params.outdir = "${workflow.launchDir}/results-fastqc"
 params.fqpattern = "*R{1,2}*.fastq.gz"
 params.ontreads = false
-//params.threads = 2 //makes no sense I think, to be removed
 params.multiqc_config = "$baseDir/multiqc_config.yml" //custom config mainly for sample names
 params.title = "Summarized nxf-fastqc report"
 params.help = ""
@@ -65,6 +64,7 @@ log.info """
          --readsdir         : ${params.readsdir}
          --fqpattern        : ${params.fqpattern}
          --outdir           : ${params.outdir}
+         --dsrcDecompress   : ${params.dsrcDecompress}
          --ontreads         : ${params.ontreads}
          --multiqc_config   : ${params.multiqc_config}
          --title            : ${params.title}
@@ -111,17 +111,75 @@ reads = readsdir_repaired + params.fqpattern
 readcounts = file(reads)
 println " Reads found:            ${readcounts.size()}"
 
-// channel for read pairs --> fastp
+// Channel configuration
 Channel
     .fromFilePairs( reads, checkIfExists: true, size: -1 ) // default is 2, so set to -1 to allow any number of files
     .ifEmpty { error "Can not find any reads matching ${reads}" }
     .set{ read_pairs_ch }
 
-// channel for reads --> seqtools
 Channel
-    .fromPath( reads, checkIfExists: true )
-    .set { reads_ch }
+    .empty()
+    .into{
+        reads2fastp_ch;
+        reads2seqtools_ch;
+        reads2dsrc_ch;
+    }
 
+if (params.dsrcDecompress) {
+    read_pairs_ch
+        .set { reads2dsrc_ch }
+} else {
+
+    read_pairs_ch
+        .set { reads2fastp_ch }
+
+
+    Channel
+        .fromPath( reads, checkIfExists: true )
+        .collect()
+        .set { reads2seqtools_ch }
+
+}
+
+
+
+
+// If dsrc compressed files are provided decompress them
+
+if (!file("$params.outdir/uncompressed").exists() && params.dsrcDecompress) file("$params.outdir/uncompressed").mkdir()
+
+process dsrc {
+    publishDir "$params.outdir/uncompressed"
+    tag "$sample_id"
+
+    input:
+    tuple sample_id, file(x) from reads2dsrc_ch
+
+    output:
+    tuple sample_id, file('*_1.fastq'), file('*_2.fastq') into decompressed1_ch
+    tuple file('*_1.fastq'), file('*_2.fastq') into decompressed2_ch
+
+    when:
+    params.dsrcDecompress
+
+    script:
+    """
+    dsrc d -t${task.cpus} ${x[0]} ${sample_id}_1.fastq && dsrc d -t${task.cpus} ${x[1]} ${sample_id}_2.fastq
+    """
+
+}
+
+if (params.dsrcDecompress) {
+    decompressed1_ch
+        .map { [ it[0], [ it[1], it[2] ] ] }
+        .set { reads2fastp_ch }
+
+    decompressed2_ch
+        .flatten()
+        .collect()
+        .set { reads2seqtools_ch }
+
+}
 
 // fastp trimmed files are published, json are only sent in the channel and used only by multiqc
 process fastp {
@@ -131,7 +189,7 @@ process fastp {
     publishDir params.outdir, pattern: 'fastp_trimmed/*' // publish only trimmed fastq files
 
     input:
-        tuple sample_id, file(x) from read_pairs_ch
+        tuple sample_id, file(x) from reads2fastp_ch
         val dsrc from params.dsrcDecompress
 
     output:
@@ -147,49 +205,30 @@ process fastp {
     if ( !single ) {
         seqmode = "PE"
         """
-        function finish {
-          $dsrc && rm read1.fastq read2.fastq || exit 0
-        }
-
-        if $dsrc
-        then
-          dsrc d -t ${task.cpus} ${x[0]} read1.fastq && dsrc d -t ${task.cpus} ${x[1]} read2.fastq
-          read1='read1.fastq' && read2='read2.fastq'
-        else
-          read1=${x[0]} && read2=${x[1]}
-        fi
-
         mkdir fastp_trimmed
         fastp \
         -q $qscore_cutoff \
-        -i \$read1 -I \$read2 \
+        -i ${x[0]} -I ${x[1]} \
         -o fastp_trimmed/trim_${x[0]} -O fastp_trimmed/trim_${x[1]} \
         -j ${sample_id}_fastp.json --thread ${task.cpus}
 
-        trap finish EXIT
+        if $dsrc
+        then
+            cd fastp_trimmed
+            dsrc c -t${task.cpus} trim_${x[0]} trim_${x[0]}.dsrc
+            dsrc c -t${task.cpus} trim_${x[1]} trim_${x[1]}.dsrc
+            rm trim_${x[0]} trim_${x[1]}
+        fi
         """
     }
     else {
         seqmode = "SE"
         """
-        function finish {
-          $dsrc && rm reads.fastq || exit 0
-        }
-
-        if $dsrc
-        then
-          dsrc d -t ${task.cpus} ${x} reads.fastq && reads='reads.fastq'
-        else
-          reads=${x}
-        fi
-
         mkdir fastp_trimmed
         fastp \
         -q $qscore_cutoff \
-        -i \$reads -o fastp_trimmed/trim_${x} \
+        -i ${x} -o fastp_trimmed/trim_${x} \
         -j ${sample_id}_fastp.json --thread ${task.cpus}
-
-        trap finish EXIT
         """
     }
 
@@ -282,9 +321,10 @@ Channel.fromPath("${baseDir}/bin/fastq-stats-report-ont.Rmd").set{ fastq_stats_r
 if (!params.ontreads) {
     process fastq_stats_ilmn {
     publishDir params.outdir
+    label 'fastq_stats'
 
     input:
-        file x from reads_ch.collect()
+        file x from reads2seqtools_ch
         file 'fastq-stats-report.Rmd' from fastq_stats_report_ch
 
     output:
@@ -300,9 +340,10 @@ if (!params.ontreads) {
 } else {
     process fastq_stats_ont {
     publishDir params.outdir
+    label 'fastq_stats'
 
     input:
-        file x from reads_ch.collect()
+        file x from reads2seqtools_ch
         file 'fastq-stats-report-ont.Rmd' from fastq_stats_report_ont_ch
 
     output:
