@@ -19,8 +19,8 @@ RUN pip install git+https://github.com/ewels/MultiQC.git
 
 # setup faster for linux
 RUN wget -P bin https://github.com/angelovangel/faster/releases/download/v0.1.4/x86_64_linux_faster && \
-mv bin/x86_64_linux_faster bin/faster && \
-chmod 755 bin/faster
+mv bin/x86_64_linux_faster /usr/local/bin/faster && \
+chmod +x /usr/local/bin/faster
 
 # Install DSRC FASTQ compressor
 RUN  wget --quiet --no-check-certificate https://github.com/refresh-bio/DSRC/releases/download/v2.0.2/dsrc-linux-x64-static.tar.gz &&\
@@ -29,6 +29,12 @@ RUN  wget --quiet --no-check-certificate https://github.com/refresh-bio/DSRC/rel
 
 
 RUN R -e "install.packages('sparkline', repos='http://cran.rstudio.com/')"
+
+# Create a docker user and set home as the working directory
+RUN useradd -ms /bin/bash docker
+WORKDIR /home/docker
+USER docker
+ENV BASH_ENV ''
 
 # Run shell
 CMD ["bash"]
